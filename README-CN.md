@@ -1,50 +1,63 @@
-# emus3ds 中文增强版 · VirtuaNES for 3DS
+# VirtuaNES for 3DS · 中文增强版
 
-本仓库是 [R-YaTian/emus3ds](https://github.com/R-YaTian/emus3ds) 的**中文本地化改进分支**，
-重点解决 3DS 上**中文显示为乱码**的问题，并修正了若干 UI 排版缺陷。
+基于 [R-YaTian/emus3ds](https://github.com/R-YaTian/emus3ds) 的改进分支（基线 `a10138f`），
+面向 VirtuaNES（NES / FC）核心的中文显示与中西文混排排版。
 
 > 原始项目由 [bubble2k16](https://github.com/bubble2k16) 开发；
-> 中文目录支持与 GBK 字库思路来自 [xxxxst](https://github.com/xxxxst)；
-> 中文化持续推进、拼音排序与 i18n 由 [R-YaTian](https://github.com/R-YaTian) 完成。
-> 本分支在其基础上继续改进，**保留全部原始署名与致谢**。
+> 中文目录支持与 GBK 字库来自 [xxxxst](https://github.com/xxxxst)；
+> 中文界面、拼音排序与 i18n 由 [R-YaTian](https://github.com/R-YaTian) 完成。
 
-## 本分支做了什么
+## 特性
 
-### 1. 中文渲染：内置 12px GBK 原生点阵 + 系统共享字体兜底
+### 字库内嵌进 romfs
 
-原实现 `ui3dsDrawChar(..., uint8 c)` 用**单字节**索引 256 项字形表，
-中文 UTF-8 的三字节序列会落进 128–255 的西欧重音字符槽位 —— 这就是乱码的根因。
+字库随 3dsx / CIA 一起分发，**不需要在 SD 卡上单独放置字体文件**。
 
-本分支把渲染改为**按 Unicode 码位**，字形来源两级：
+- 1 bit 打包：2,093,568 → **261,704 字节**（magic `GBK1`：u32 解包大小 + LSB 位流）
+- 加载顺序 `romfs:` → SD 卡 → 旧路径，兼容把字体放在 SD 卡的环境
+- 打包前的字库为 16×16 点阵（87 行 × 94 列，覆盖 GB2312 全部区段）
+
+### 字形两级来源
+
+中文字形按 Unicode 码位渲染，来源两级：
 
 | 优先级 | 来源 | 特点 |
 |---|---|---|
-| 首选 | 内置 12px GBK 原生点阵（`src/cores/virtuanes/assets/romfs/gbk.bin`） | 双色点阵、零抗锯齿、与英文点阵同尺寸，**边缘锐利** |
-| 兜底 | 3DS 系统共享字体（`fontEnsureMapped` + A4 4bpp 面积平均下采样） | 覆盖 GB2312 之外的一切（生僻字、繁体、假名等） |
+| 首选 | 内嵌 12px GBK 原生点阵 | 双色点阵、零抗锯齿、与英文点阵同尺寸，边缘锐利 |
+| 兜底 | 3DS 系统共享字体（`fontEnsureMapped` + A4 4bpp 面积平均下采样） | 覆盖 GB2312 之外的字（生僻字、繁体、假名等） |
 
-- 字库经 1bit 打包：2,093,568 → **261,704 字节**（magic `"GBK1"`）
-- GB2312 区有 688 个未定义空槽，用位图表 `fontGBKUsed` 标记，
-  空槽自动回落系统字体，避免"看似有字实为空白"
-- 汉字覆盖率：**6763 / 6768 = 99.9%**
+- GB2312 区有 688 个未定义空槽，用 `fontGBKUsed` 位图表标记，空槽回落系统字体，
+  避免画出空白
+- 汉字覆盖率 **6763 / 6768 = 99.9%**
 
-### 2. 中西文混排排版
+### 中西文混排排版
 
-- 菜单行距 13px；列表可见行数**由内容区高度反推**，
-  并在绘制端兜底夹取 `while (startY + n*行距 > 内容区底) n--`，
-  从根上杜绝"列表侵入页脚状态栏"
+- 菜单行距 13px；列表可见行数由内容区高度反推，绘制端再兜底夹取
+  （`while (startY + n*行距 > 内容区底) n--`），保证最后一行不越过内容区边界
 - 中西文交界插入 1px 自动间距（对应传统排版的"自动调整中文与西文间距"）
-- 对话框换行文本行距与菜单行距解耦（13px），保证三行不被裁切
+- 对话框换行文本的行距与菜单行距解耦（13px），保证三行文本不被裁切
 
-### 3. 修正的缺陷
+### UI 图标字形
 
-| 症状 | 真因 | 修法 |
-|---|---|---|
-| 设置项出现**空心矩形**（复选框/箭头/进度条） | UI 图标是**单字节字形索引**写进字符串字面量（`0xF8` 上箭头 / `0xF9` 下箭头 / `0xFA..0xFC` 进度条 / `0xFD` 勾选 / `0xFE` 未勾选）。这些字节不是合法 UTF-8，被解码成 `U+FFFD` 后落入"缺字方框"分支 | 设哨兵 `UI3DS_LEGACY_BYTE_BASE`，非法 UTF-8 单字节回落到内置字体单字节点阵 |
-| 英文**发虚模糊** | 默认字体曾被改为 Arial —— 半透明像素占比 76.9%，软度是 Tempesta 的 9 倍 | 默认改回 `Font = 0`（Tempesta），并用 `FontRev` 迁移键纠正老配置 |
-| 老配置里字体改不回来 | `Font` 是**持久化**设置，只改默认值无效 | 在配置列表**末尾**新增 `FontRev`：老文件无此键 → 强制 `Font=0`；保存后写入 `FontRev=1` |
+设置项里的复选框、翻页箭头、进度条是**单字节字形索引**，写在内置字体的第 248–254 号槽位：
 
-> ⚠️ `FontRev` 必须加在配置读取列表的**最末尾**：该格式用 `fscanf` 顺序读取，
-> 键名/顺序必须与写入严格对齐，插在中间会导致老文件后续设置全部读取失败。
+| 字节 | 用途 |
+|---|---|
+| `0xF8` / `0xF9` | 上 / 下翻页箭头 |
+| `0xFA` / `0xFB` / `0xFC` | 进度条指针 / 条身 |
+| `0xFD` / `0xFE` | 复选框「已勾选」/「未勾选」 |
+
+渲染时用哨兵 `UI3DS_LEGACY_BYTE_BASE` 识别"不构成合法 UTF-8 的单字节"，
+回落到内置字体的单字节点阵，与汉字、西文的按码位渲染共存。
+
+### 默认字体与配置迁移
+
+- 默认字体 `Font = 0`（Tempesta）
+- 配置读取列表**末尾**新增 `FontRev` 迁移键，用于把历史配置里的字体设置纠正为默认值：
+  老配置文件没有该键 → 强制 `Font = 0`；保存后写入 `FontRev=1`
+
+  > 该键必须位于列表**最末尾**。配置格式用 `fscanf` 顺序读取，键名与顺序必须和写入严格对齐，
+  > 插在中间会导致老配置文件的后续设置全部读取失败。
 
 ## 构建
 
@@ -60,36 +73,30 @@ make -f virtuanes-make -j8
 ```
 
 产物：
-- `virtuanes_3ds.3dsx` —— 家用机启动器（Homebrew Launcher）用
-- `virtuanes_3ds.cia` —— 已安装到主菜单用（由 `Makerom` 自动打包，romfs 字库已内嵌）
+- `virtuanes_3ds.3dsx` —— Homebrew Launcher 用
+- `virtuanes_3ds.cia` —— 装到主菜单用（由 Makerom 自动打包，romfs 字库已内嵌）
 
-TemperPCE / PicoDrive 核心用 `temperpce-make` / `picodrive-make`。
+TemperPCE / PicoDrive 核心分别用 `temperpce-make` / `picodrive-make`。
 
-> 构建环境提示：`src/cores/virtuanes/assets/romfs/gbk.bin` 必须是已打包格式
-> （`GBK1` magic + u32 解包大小 + LSB 位流）。仓库根目录的 `gbk.bin`
-> 是 16×16 原始点阵（87×94×256）字库源，配套打包脚本见 `_scratch/pack_gbk.py`。
+> 构建提示：`src/cores/virtuanes/assets/romfs/gbk.bin` 必须是**已打包格式**
+> （`GBK1` magic + u32 解包大小 + LSB 位流）。仓库根目录的 `gbk.bin` 是
+> 16×16 原始点阵（87×94×256）字库源。
 
 ## 安装
 
-**方式一：3dsx（无需安装）**
-把 `virtuanes_3ds.3dsx` 放到 SD 卡 `/3ds/` 下，从 Homebrew Launcher 启动；
-或用 hbmenu 的 **NetLoader** 无线推送（3DS 上按 `Y`，电脑上 `3dslink -a <IP> virtuanes_3ds.3dsx`）。
+**方式一：CIA（装到主菜单）**
+用 **FBI** 安装 `virtuanes_3ds.cia`。
 
-**方式二：CIA（装到主菜单）**
-把 `virtuanes_3ds.cia` 拷到 SD 卡，用 **FBI** 安装。
+**方式二：3dsx（无需安装）**
+`virtuanes_3ds.3dsx` 放到 SD 卡 `/3ds/`，从 Homebrew Launcher 启动；
+或用 hbmenu 的 **NetLoader** 无线推送（3DS 上按 `Y`，
+电脑上 `3dslink -a <IP> virtuanes_3ds.3dsx`）。
 
 **方式三：FBI 无线远程安装（不用拔卡）**
 3DS 上 `FBI` → `Remote Install` → `Receive URLs over the network`，
-电脑上起一个 HTTP 服务并把 URL 投递给 3DS 的 5000 端口（协议见下），
-3DS 上按 `A` 确认即可。
+再把 cia 的 URL 投递给 3DS 的 5000 端口，3DS 上按 `A` 确认。
 
-```
-PC → TCP <3DS_IP>:5000
-     send: struct.pack('!L', len(payload)) + payload
-     payload: ASCII，每行一个 URL，形如 <PC_IP>:<HTTP_PORT>/<filename>
-             （注意**不带** http:// 前缀）
-FBI 逐个 HTTP 下载并安装，完成后回一个确认字节
-```
+以上三种方式都**不需要额外往 SD 卡放字体文件**。
 
 ## 发布产物
 
@@ -107,7 +114,7 @@ CIA 信息：Title ID `0x0004000000384A00`，Product Code `CTR-P-VNES`，
 
 - [bubble2k16](https://github.com/bubble2k16) —— 原版作者
 - [xxxxst](https://github.com/xxxxst) —— 中文目录支持与 GBK 字库
-- [R-YaTian](https://github.com/R-YaTian) —— 中文化持续推进、拼音排序、i18n
+- [R-YaTian](https://github.com/R-YaTian) —— 中文界面、拼音排序、i18n
 - 翻译：James-Makoto、R-YaTian、xxxxst
 
 各核心的上游项目：VirtuaNES（Norix）、Temper（Exophase）、PicoDrive（notaz）。

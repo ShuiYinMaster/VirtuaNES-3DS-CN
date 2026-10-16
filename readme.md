@@ -1,7 +1,8 @@
-> ## 中文改进版 · VirtuaNES for 3DS
+> ## 中文增强版 · VirtuaNES for 3DS
 >
-> 本仓库是 [R-YaTian/emus3ds](https://github.com/R-YaTian/emus3ds) 的**中文本地化改进分支**，
-> 解决 3DS 上的中文乱码、设置项**空心方框**、英文发虚、列表侵入页脚等问题。
+> 本仓库是 [R-YaTian/emus3ds](https://github.com/R-YaTian/emus3ds) 的改进分支：
+> **字库内嵌进 romfs**，装完即用，不需要在 SD 卡上单独放置字体文件；
+> 并补充了 GB2312 之外的字体兜底与中西文混排排版细节。
 >
 > - **改动说明 / 构建方法 / 安装方式：[README-CN.md](README-CN.md)**
 > - **下载本分支成品：请用本仓库的 [Releases](../../releases)**
