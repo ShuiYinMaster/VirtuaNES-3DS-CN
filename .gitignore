@@ -1,0 +1,8 @@
+build/*
+releases/*
+.vscode/
+*.3dsx
+*.cia
+*.elf
+*.smdh
+*.mo
