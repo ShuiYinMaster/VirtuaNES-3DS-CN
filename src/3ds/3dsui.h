@@ -17,6 +17,13 @@ int ui3dsGetScreenWidth(gfxScreen_t targetScreen);
 
 
 //---------------------------------------------------------------
+// Returns the global text line height in pixels.
+// 菜单等布局请使用此值，避免各处硬编码行高。
+//---------------------------------------------------------------
+int ui3dsGetFontHeight(void);
+
+
+//---------------------------------------------------------------
 // this is called on init and if game screen has swapped
 //---------------------------------------------------------------
 void ui3dsUpdateScreenSettings(gfxScreen_t gameScreen);

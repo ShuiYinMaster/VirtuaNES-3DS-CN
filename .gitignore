@@ -6,3 +6,10 @@ releases/*
 *.elf
 *.smdh
 *.mo
+_objtest/
+*.o
+*.d
+*.lst
+*.map
+Thumbs.db
+.DS_Store

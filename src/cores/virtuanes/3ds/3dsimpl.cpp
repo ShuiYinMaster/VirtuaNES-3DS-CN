@@ -1138,6 +1138,35 @@ bool impl3dsReadWriteSettingsGlobal(bool writeMode)
     config3dsReadWriteInt32("Language=%d\n", &settings3DS.Language, 0, 1);
     config3dsReadWriteInt32("ScreenFilter=%d\n", &settings3DS.ScreenFilter, 0, 1);
 
+    //-------------------------------------------------------------------------
+    // 一次性设置迁移：把上一版误设的默认字体（Arial）改回 Tempesta
+    //
+    // 背景：上一版把 settings3DS.Font 的默认值从 0(Tempesta) 改成 2(Arial)，
+    // 依据是"Arial 字面更宽、墨迹更密"。但那个判断漏掉了抗锯齿程度 —— 实测点阵数据：
+    //     Tempesta 实心 2633 / 半透明 945   （半透明/实心 = 0.36）
+    //     Arial    实心 1302 / 半透明 4338  （半透明/实心 = 3.33，软度 9 倍）
+    // Arial 是重度抗锯齿的软字体，13px 下整片发灰，观感就是"英文变模糊"。
+    //
+    // 问题在于「字体」是持久化的：老配置文件里可能已经存下 Font=2，
+    // 光把默认值改回 0 救不回来（读到的仍是 2）。
+    //
+    // 迁移方式：FontRev 是新增在文件**末尾**的标记键。
+    //   * 老文件没有这个键 -> fscanf 失败 -> fontRev 保持 0 -> 判定为"老配置"，
+    //     把字体恢复成新默认值 0；
+    //   * 保存一次后文件里就有 FontRev=1，此后用户在菜单里的选择不再被覆盖。
+    //
+    // 关键：新键必须加在列表最末尾（与上面 "All new options should come here!" 一致）。
+    // 这个配置格式用 fscanf 顺序读取，键名/顺序必须和写入时严格对齐，
+    // 插在中间会让老文件后续所有设置读取失败。
+    //-------------------------------------------------------------------------
+    int fontRev = writeMode ? 1 : 0;
+    config3dsReadWriteInt32("FontRev=%d\n", &fontRev, 0, 1);
+    if (!writeMode && fontRev != 1)
+    {
+        settings3DS.Font = 0;
+        printf("cfg: migrated UI font back to Tempesta (Arial bitmap is too soft)\n");
+    }
+
     config3dsCloseFile();
     return true;
 }

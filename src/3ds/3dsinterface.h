@@ -21,6 +21,23 @@ typedef struct
 
     int     CropPixels;
 
+    // 西文字体。默认保持上游的 Tempesta（0）。
+    //
+    // 上一版曾把默认改成 Arial（2），依据是"字面更宽、墨迹更密，与汉字重量更接近"。
+    // 那个判断漏掉了最关键的一项 —— **抗锯齿程度**。实测三套字体的点阵数据：
+    //
+    //   字体        实心像素(=8)   半透明像素(1..7)   半透明/实心
+    //   Tempesta        2633            945             0.36
+    //   Ronda           2798            955             0.34
+    //   Arial           1302           4338             3.33   <-- 软度是前两者的 9 倍
+    //
+    // Arial 的实心像素只有一半、半透明像素是 4.6 倍，它的点阵是重度抗锯齿的软字体
+    // （多半是从更大的字号降采样来的）。在 13px 这个尺寸下画出来整体发灰、笔画发散，
+    // 观感就是"英文变模糊"。Tempesta / Ronda 才是锐利的点阵字。
+    //
+    // 所以默认改回 Tempesta。三套仍可自由切换（纵向位置差已在 3dsui.cpp 的
+    // ui3dsLatinOffY[] 里补偿）。旧配置文件里可能已存下 Font=2，见
+    // impl3dsReadWriteSettingsGlobal() 末尾的一次性迁移。
     int     Font = 0;                       // 0 - Tempesta, 1 - Ronda, 2 - Arial
 
     int     NESPalette = 0;					// 0 - FCEUX default
