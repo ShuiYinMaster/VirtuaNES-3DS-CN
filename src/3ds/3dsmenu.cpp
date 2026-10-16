@@ -16,6 +16,60 @@
 #define MENU_HEIGHT             (14)
 #define DIALOG_HEIGHT           (5)
 
+//-------------------------------------------------------
+// 列表内容区的垂直边界（与 menu3dsDrawMenu 里的背景条一致）
+//
+//     0..MENU_TOP_BAR_HEIGHT        顶栏（标签页）
+//     ..MENU_CONTENT_BOTTOM_Y       列表内容区
+//     ..240                         页脚状态栏
+//
+// 列表行数不再写死，而是由 menu3dsGetMaxVisibleItems() 从这两个值反推，
+// 保证 起点 + 行数*行距 <= MENU_CONTENT_BOTTOM_Y 恒成立。
+// 这样调整行距（ui3dsGetFontHeight）只会让行数变少，不会侵入页脚。
+//-------------------------------------------------------
+#define MENU_TOP_BAR_HEIGHT     24
+#define MENU_CONTENT_BOTTOM_Y   220     // 页脚状态栏起点
+#define MENU_ITEMS_START_Y      29      // 列表首行 y
+
+#define DIALOG_CONTENT_BOTTOM_Y 160     // 对话框内容底边（背景条 75..160）
+#define DIALOG_ITEMS_START_Y    80
+
+//-------------------------------------------------------
+// 由"可用高度 / 行距"反推列表可见行数（含副标题占用的那一行）。
+//
+// 不会再出现"行距一变大、最后几行压到页脚上"的情况 —— 行距变大时这里
+// 返回的行数自动减少。返回值还会被上限（菜单 14 / 对话框 5）夹住，
+// 因此调大行距绝不会让列表比以前显示得更多，只会更少。
+//
+// 口径与上游一致：本函数返回的是"内容区能放下的总行数，
+// 副标题占一行也要算进去"。绘制侧（menu3dsDrawItems）内部会为副标题自扣一行，
+// 导航侧则由调用者自己扣，两边就自然对齐了。
+//-------------------------------------------------------
+static int menu3dsGetMaxVisibleRows(int startY, int bottomY, int hardLimit)
+{
+    int fontHeight = ui3dsGetFontHeight();
+    if (fontHeight < 1)
+        fontHeight = 1;
+
+    int rows = (bottomY - startY) / fontHeight;
+    if (rows > hardLimit)
+        rows = hardLimit;
+    if (rows < 1)
+        rows = 1;
+    return rows;
+}
+
+// 菜单列表 / 对话框列表的可见总行数（绘制侧口径，含副标题行）
+static int menu3dsMenuRows(void)
+{
+    return menu3dsGetMaxVisibleRows(MENU_ITEMS_START_Y, MENU_CONTENT_BOTTOM_Y, MENU_HEIGHT);
+}
+
+static int menu3dsDialogRows(void)
+{
+    return menu3dsGetMaxVisibleRows(DIALOG_ITEMS_START_Y, DIALOG_CONTENT_BOTTOM_Y, DIALOG_HEIGHT);
+}
+
 #define ANIMATE_TAB_STEPS 3
 
 
@@ -145,9 +199,10 @@ void menu3dsDrawItems(
     int normalItemDescriptionTextColor,
     int disabledItemTextColor,
     int headerItemTextColor,
-    int subtitleTextColor)
+    int subtitleTextColor,
+    int menuBottomY = MENU_CONTENT_BOTTOM_Y)
 {
-    int fontHeight = 13;
+    int fontHeight = ui3dsGetFontHeight();
     char gauge[52];
     char menuTextBuffer[512];
     char selectedTextBuffer[512];
@@ -162,6 +217,15 @@ void menu3dsDrawItems(
             subtitleTextColor, HALIGN_LEFT, menuTextBuffer);
         menuStartY += fontHeight;
     }
+
+    if (maxItems < 0)
+        maxItems = 0;
+
+    // 结构性约束：行数按"可用高度"再夹一次，保证最后一行不越过内容区底边
+    // （也就是页脚状态栏的起点）。调用方即使传进来的 maxItems 偏大，
+    // 这里也会兜住 —— 列表侵入页脚这一类问题从根上不会再发生。
+    while (maxItems > 0 && menuStartY + maxItems * fontHeight > menuBottomY)
+        maxItems--;
 
     int line = 0;
     int color = Themes[settings3DS.Theme].selectedTabTextColor;
@@ -182,7 +246,7 @@ void menu3dsDrawItems(
         //
         if (currentTab->SelectedItemIndex == i)
         {
-            ui3dsDrawRect(0, y, screenSettings.SecondScreenWidth, y + 14, selectedItemBackColor);
+            ui3dsDrawRect(0, y, screenSettings.SecondScreenWidth, y + fontHeight, selectedItemBackColor);
         }
 
         if (currentTab->MenuItems[i].Type == MENUITEM_HEADER1)
@@ -401,8 +465,8 @@ void menu3dsDrawMenu(int menuItemFrame, int translateY)
     ptmuExit();
 
     int line = 0;
-    int maxItems = MENU_HEIGHT;
-    int menuStartY = 29;
+    int maxItems = menu3dsMenuRows();
+    int menuStartY = MENU_ITEMS_START_Y;
 
     ui3dsSetTranslate(menuItemFrame * 3, translateY);
 
@@ -499,7 +563,7 @@ void menu3dsDrawDialog()
 
     // Draw the selectable items.
     menu3dsDrawItems(
-        &dialogTab, 30, 80, DIALOG_HEIGHT,
+        &dialogTab, 30, DIALOG_ITEMS_START_Y, menu3dsDialogRows(),
         dialogSelectedItemBackColor,        // selectedItemBackColor
         Themes[settings3DS.Theme].selectedItemTextColor,        // selectedItemTextColor
         dialogItemDescriptionTextColor,     // selectedItemDescriptionColor
@@ -508,7 +572,8 @@ void menu3dsDrawDialog()
         dialogItemDescriptionTextColor,     // normalItemDescriptionTextColor
         dialogItemDescriptionTextColor,     // disabledItemTextColor
         dialogItemTextColor,                // headerItemTextColor
-        dialogItemTextColor                 // subtitleTextColor
+        dialogItemTextColor,                // subtitleTextColor
+        DIALOG_CONTENT_BOTTOM_Y             // 对话框内容底边
     );
 }
 
@@ -649,9 +714,7 @@ int menu3dsMenuSelectItem(bool (*itemChangedCallback)(int ID, int value))
         u32 keysDown = (~lastKeysHeld) & thisKeysHeld;
         lastKeysHeld = thisKeysHeld;
 
-        int maxItems = MENU_HEIGHT;
-        if (isDialog)
-            maxItems = DIALOG_HEIGHT;
+        int maxItems = isDialog ? menu3dsDialogRows() : menu3dsMenuRows();
 
         if (currentTab->SubTitle[0])
         {
@@ -898,13 +961,14 @@ void menu3dsAddTab(const char *title, SMenuItem *menuItems)
 
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
+    int visibleRows = menu3dsMenuRows();
     for (int i = 0; i < itemCount; i++)
     {
         if (menuItems[i].ID > -1)
         {
             currentTab->SelectedItemIndex = i;
-            if (currentTab->SelectedItemIndex >= currentTab->FirstItemIndex + MENU_HEIGHT)
-                currentTab->FirstItemIndex = currentTab->SelectedItemIndex - MENU_HEIGHT + 1;
+            if (currentTab->SelectedItemIndex >= currentTab->FirstItemIndex + visibleRows)
+                currentTab->FirstItemIndex = currentTab->SelectedItemIndex - visibleRows + 1;
             break;
         }
     }
@@ -945,7 +1009,7 @@ void menu3dsSetSelectedItemIndexByID(int tabIndex, int ID)
 
     SMenuTab *currentTab = &menuTab[tabIndex];
 
-    int maxItems = MENU_HEIGHT;
+    int maxItems = menu3dsMenuRows();
     if (currentTab->SubTitle[0])
         maxItems--;
 
@@ -1160,14 +1224,15 @@ int menu3dsShowDialog(const char *title, const char *dialogText, int newDialogBa
     currentTab->FirstItemIndex = 0;
     currentTab->SelectedItemIndex = 0;
 
+    int dialogRows = menu3dsDialogRows();
     for (int i = 0; i < itemCount; i++)
     {
         if ((selectedID == -1 && menuItems[i].ID > -1) ||
             menuItems[i].ID == selectedID)
         {
             currentTab->SelectedItemIndex = i;
-            if (currentTab->SelectedItemIndex >= currentTab->FirstItemIndex + DIALOG_HEIGHT)
-                currentTab->FirstItemIndex = currentTab->SelectedItemIndex - DIALOG_HEIGHT + 1;
+            if (currentTab->SelectedItemIndex >= currentTab->FirstItemIndex + dialogRows)
+                currentTab->FirstItemIndex = currentTab->SelectedItemIndex - dialogRows + 1;
             break;
         }
     }
